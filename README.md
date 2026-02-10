@@ -1,5 +1,5 @@
 # Iterations
-- Version 1: Built the core 3D Battleship game with Three.js featuring animated ocean waves (custom shader), 3D ship models with hulls/decks/turrets, ship placement phase, battle phase with AI opponent, particle effects for explosions and splashes, and ship sinking animations. Used extensive custom CSS for the naval command aesthetic.
+- Version 1: First I tried to have the game be multiplayer where I could send someone the link and play them and it be in real time, but I soon realized I was too ambitious, and asked it to revert the changes.
 - Version 2: Added localStorage persistence and replay system. Game state auto-saves after every action, allows continuing interrupted games, stores up to 20 past games in history, and includes a full replay viewer with scrubber, play/pause, step controls, and variable speed (0.25x-4x). Refactored to use Tailwind CSS to reduce code size.
 
 # Known Limitations
