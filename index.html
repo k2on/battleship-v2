@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Naval Command - 3D Battleship</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: { extend: { fontFamily: { 'orbitron': ['Orbitron', 'monospace'], 'rajdhani': ['Rajdhani', 'sans-serif'] },
+                colors: { 'navy': { 900: '#0a0e14', 800: '#0a1628', 600: '#002840', 500: '#003050', 400: '#004466' },
+                    'cyber': { 400: '#00d4ff', 500: '#0099cc', 600: '#006699' }, 'danger': '#ff4444', 'warning': '#ff6b35', 'replay': '#ff9500' } } }
+        }
+    </script>
+    <style>
+        body { font-family: 'Rajdhani', sans-serif; }
+        @keyframes titleGlow { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.3); } }
+        @keyframes radarSweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes slideIn { to { opacity: 1; transform: translateX(0); } }
+        @keyframes loadProgress { to { width: 100%; } }
+        .animate-title-glow { animation: titleGlow 3s ease-in-out infinite; }
+        .animate-radar { animation: radarSweep 3s linear infinite; }
+        .animate-slide-in { animation: slideIn 0.3s ease forwards; }
+        .gradient-text { background: linear-gradient(135deg, #00d4ff, #0099cc, #006699); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .gradient-text-victory { background: linear-gradient(135deg, #00ff88, #00d4ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .gradient-text-defeat { background: linear-gradient(135deg, #ff4444, #ff6b35); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .gradient-text-replay { background: linear-gradient(135deg, #ff9500, #ff6b00); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        input[type="range"].replay-scrubber { -webkit-appearance: none; background: rgba(255, 149, 0, 0.2); border-radius: 4px; }
+        input[type="range"].replay-scrubber::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: #ff9500; border-radius: 50%; cursor: pointer; }
+    </style>
+</head>
+<body class="bg-navy-900 text-gray-200 overflow-hidden h-screen">
+    <div id="loading-screen" class="fixed inset-0 bg-navy-900 flex flex-col items-center justify-center z-[1000] transition-opacity duration-500">
+        <div class="font-orbitron text-4xl font-black tracking-widest gradient-text mb-10">NAVAL COMMAND</div>
+        <div class="w-72 h-1 bg-navy-600 rounded overflow-hidden"><div class="h-full bg-gradient-to-r from-cyber-400 to-green-400 w-0" style="animation: loadProgress 2s ease forwards;"></div></div>
+        <div class="text-xs tracking-widest uppercase text-gray-600 mt-5">Initializing...</div>
+    </div>
+    <div id="game-container" class="relative w-full h-screen">
+        <div id="canvas-container" class="absolute inset-0"></div>
+        <button id="menu-btn" class="absolute top-5 right-5 z-30 font-rajdhani text-sm font-semibold tracking-wider uppercase px-5 py-3 bg-navy-600/80 border border-cyber-400/30 rounded text-gray-200 hover:border-cyber-400 hover:text-cyber-400 transition-all">☰ History</button>
+        <div id="continue-banner" class="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-replay/15 border border-replay/50 rounded-lg px-6 py-4 hidden items-center gap-5">
+            <span class="text-sm text-replay">⚓ Game in progress</span>
+            <button id="continue-game-btn" class="text-xs font-semibold uppercase px-4 py-2 bg-replay/30 border border-replay text-replay rounded hover:bg-replay/50">Continue</button>
+            <button id="new-game-btn" class="text-xs font-semibold uppercase px-4 py-2 border border-white/30 text-gray-400 rounded hover:text-white">New Game</button>
+        </div>
+        <div class="absolute top-0 left-0 right-0 px-8 py-5 flex justify-between items-start bg-gradient-to-b from-navy-900/90 to-transparent pointer-events-none z-10">
+            <div id="game-title" class="font-orbitron text-2xl font-black tracking-widest gradient-text animate-title-glow">Naval Command</div>
+            <div class="flex gap-6 pointer-events-auto">
+                <div class="text-center px-5 py-3 bg-navy-600/60 border border-cyber-400/30 rounded"><div class="text-[10px] tracking-widest uppercase text-cyber-400 mb-1">Your Fleet</div><div id="player-ships" class="font-orbitron text-2xl font-bold text-white">5</div></div>
+                <div class="text-center px-5 py-3 bg-navy-600/60 border border-cyber-400/30 rounded"><div class="text-[10px] tracking-widest uppercase text-cyber-400 mb-1">Enemy Fleet</div><div id="enemy-ships" class="font-orbitron text-2xl font-bold text-white">5</div></div>
+                <div class="text-center px-5 py-3 bg-navy-600/60 border border-cyber-400/30 rounded"><div class="text-[10px] tracking-widest uppercase text-cyber-400 mb-1">Shots</div><div id="shots-fired" class="font-orbitron text-2xl font-bold text-white">0</div></div>
+            </div>
+        </div>
+        <div id="ship-panel" class="absolute left-8 top-1/2 -translate-y-1/2 z-20"><h3 class="font-orbitron text-xs tracking-widest uppercase text-cyber-400 mb-4">Deploy Fleet</h3><div class="flex flex-col gap-3" id="ship-list"></div></div>
+        <div id="controls-panel" class="absolute right-8 top-1/2 -translate-y-1/2 z-20 text-right">
+            <button id="rotate-btn" class="block w-full mb-2 text-sm font-semibold uppercase px-6 py-3 bg-navy-600/80 border border-cyber-400/30 rounded hover:border-cyber-400 hover:text-cyber-400">Rotate Ship</button>
+            <div class="text-xs text-gray-600 mb-4">Press R</div>
+            <button id="random-btn" class="block w-full mb-2 text-sm font-semibold uppercase px-6 py-3 bg-navy-600/80 border border-cyber-400/30 rounded hover:border-cyber-400 hover:text-cyber-400">Random</button>
+            <button id="start-btn" disabled class="block w-full text-sm font-semibold uppercase px-6 py-3 bg-gradient-to-r from-cyber-400 to-cyber-600 border border-cyber-400 rounded text-white disabled:opacity-30">Start Battle</button>
+        </div>
+        <div id="history-panel" class="absolute right-8 top-1/2 -translate-y-1/2 z-20 bg-navy-800/95 border border-cyber-400/30 rounded-lg p-5 max-h-[70vh] overflow-y-auto hidden w-72">
+            <h3 class="font-orbitron text-sm tracking-widest uppercase text-cyber-400 mb-4 flex justify-between">History <span id="close-history" class="cursor-pointer text-xl opacity-60 hover:opacity-100">×</span></h3>
+            <div id="history-list" class="flex flex-col gap-3"></div>
+        </div>
+        <div id="replay-controls" class="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 bg-navy-800/95 border border-replay/50 rounded-xl px-6 py-4 hidden items-center gap-4">
+            <button id="replay-start" class="w-10 h-10 rounded-full border-2 border-replay/50 bg-replay/10 text-replay flex items-center justify-center hover:bg-replay/30">⏮</button>
+            <button id="replay-prev" class="w-10 h-10 rounded-full border-2 border-replay/50 bg-replay/10 text-replay flex items-center justify-center hover:bg-replay/30">⏪</button>
+            <button id="replay-play" class="w-12 h-12 rounded-full border-2 border-replay/50 bg-replay/10 text-replay text-xl flex items-center justify-center hover:bg-replay/30">▶</button>
+            <button id="replay-next" class="w-10 h-10 rounded-full border-2 border-replay/50 bg-replay/10 text-replay flex items-center justify-center hover:bg-replay/30">⏩</button>
+            <button id="replay-end" class="w-10 h-10 rounded-full border-2 border-replay/50 bg-replay/10 text-replay flex items-center justify-center hover:bg-replay/30">⏭</button>
+            <div class="flex flex-col items-center gap-2 min-w-[200px]">
+                <input type="range" id="replay-scrubber" class="replay-scrubber w-full h-2" min="0" max="100" value="0">
+                <div class="flex justify-between w-full font-orbitron text-xs text-replay"><span id="current-move">Move 0</span><span id="total-moves">of 0</span></div>
+            </div>
+            <div id="speed-indicator" class="font-orbitron text-xs text-replay min-w-[40px] text-center">1x</div>
+            <button id="replay-slower" class="w-8 h-8 rounded-full border border-replay/50 bg-replay/10 text-replay flex items-center justify-center">−</button>
+            <button id="replay-faster" class="w-8 h-8 rounded-full border border-replay/50 bg-replay/10 text-replay flex items-center justify-center">+</button>
+            <button id="exit-replay" class="text-xs font-semibold uppercase px-4 py-2 bg-danger/20 border border-danger/50 text-danger rounded hover:bg-danger/40">Exit</button>
+        </div>
+        <div class="absolute bottom-0 left-0 right-0 px-8 py-5 flex justify-between items-end bg-gradient-to-t from-navy-900/90 to-transparent pointer-events-none z-10">
+            <div id="turn-indicator" class="font-orbitron text-sm tracking-widest px-6 py-4 bg-navy-600/80 border-2 border-cyber-400 text-cyber-400 rounded">DEPLOYMENT PHASE</div>
+            <div id="message-log" class="max-w-sm text-right"></div>
+        </div>
+        <div class="absolute bottom-5 left-5 w-28 h-28 border-2 border-cyber-400/30 rounded-full overflow-hidden">
+            <div class="absolute top-1/2 left-1/2 w-full h-full bg-[conic-gradient(from_0deg,transparent_0deg,rgba(0,212,255,0.4)_30deg,transparent_60deg)] origin-[0_0] animate-radar"></div>
+            <div class="absolute top-1/2 left-1/2 w-2 h-2 bg-cyber-400 rounded-full -translate-x-1/2 -translate-y-1/2"></div>
+        </div>
+        <div id="crosshair" class="fixed pointer-events-none z-50 hidden"><div class="absolute w-0.5 h-8 bg-danger/80 left-1/2 -top-4 -translate-x-1/2"></div><div class="absolute h-0.5 w-8 bg-danger/80 top-1/2 -left-4 -translate-y-1/2"></div></div>
+    </div>
+    <div id="game-over-modal" class="fixed inset-0 bg-navy-900/95 flex items-center justify-center z-[100] opacity-0 invisible transition-all">
+        <div class="text-center transform scale-90 transition-transform">
+            <div id="modal-title" class="font-orbitron text-5xl font-black tracking-widest mb-5 gradient-text-victory">VICTORY</div>
+            <div id="modal-subtitle" class="text-xl text-gray-500 mb-10">All enemy vessels destroyed</div>
+            <button id="modal-new-game" class="font-orbitron text-base font-bold uppercase px-12 py-5 bg-gradient-to-r from-cyber-400 to-cyber-600 rounded text-white hover:scale-105 transition-all mx-2">New Battle</button>
+            <button id="modal-replay" class="font-orbitron text-base font-bold uppercase px-12 py-5 bg-navy-600/80 border border-cyber-400/30 rounded text-gray-200 hover:border-cyber-400 mx-2">Replay</button>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+const GRID_SIZE=10,CELL_SIZE=2,GRID_GAP=15,SHIPS=[{name:'carrier',size:5},{name:'battleship',size:4},{name:'cruiser',size:3},{name:'submarine',size:3},{name:'destroyer',size:2}];
+const STORAGE={CURRENT:'battleship_current',HISTORY:'battleship_history'};
+let gameState={phase:'placement',turn:'player',selectedShip:null,isHorizontal:true,playerGrid:Array(10).fill(null).map(()=>Array(10).fill(null)),enemyGrid:Array(10).fill(null).map(()=>Array(10).fill(null)),playerShots:Array(10).fill(null).map(()=>Array(10).fill(false)),enemyShots:Array(10).fill(null).map(()=>Array(10).fill(false)),playerShips:[],enemyShips:[],placedShips:[],shotsFired:0,moveHistory:[],gameStartTime:null,isReplay:false};
+let replayState={isPlaying:false,currentIndex:-1,speed:1,intervalId:null,gameData:null};
+let scene,camera,renderer,playerBoard,enemyBoard,raycaster,mouse,hoverMarker,targetMarker,waterPlane;
+let shipMeshes={player:[],enemy:[]},markerMeshes={hits:[],misses:[]};
+
+function initThree(){
+    scene=new THREE.Scene();scene.fog=new THREE.FogExp2(0x0a1628,0.008);
+    camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.1,1000);camera.position.set(0,35,40);camera.lookAt(0,0,0);
+    renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+    raycaster=new THREE.Raycaster();mouse=new THREE.Vector2();
+    scene.add(new THREE.AmbientLight(0x4488aa,0.4));
+    const d=new THREE.DirectionalLight(0xffffff,0.8);d.position.set(20,40,20);d.castShadow=true;scene.add(d);
+    scene.add(new THREE.PointLight(0x00d4ff,0.5,50));scene.add(new THREE.PointLight(0xff6b35,0.3,50));
+    createOcean();createBoards();createMarkers();
+    addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+    renderer.domElement.addEventListener('mousemove',onMouseMove);renderer.domElement.addEventListener('click',onClick);
+    document.addEventListener('keydown',e=>{if(e.key.toLowerCase()==='r'&&gameState.phase==='placement'){gameState.isHorizontal=!gameState.isHorizontal;updateHover()}});
+    animate();
+}
+
+function createOcean(){
+    const g=new THREE.PlaneGeometry(200,200,100,100);
+    const m=new THREE.ShaderMaterial({uniforms:{uTime:{value:0},uColor1:{value:new THREE.Color(0x001428)},uColor2:{value:new THREE.Color(0x003050)}},
+        vertexShader:'uniform float uTime;varying float vE;void main(){vec3 p=position;p.z=sin(p.x*0.3+uTime*0.5)*0.3+sin(p.y*0.4+uTime*0.7)*0.2+sin((p.x+p.y)*0.2+uTime*0.3)*0.4;vE=p.z;gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);}',
+        fragmentShader:'uniform vec3 uColor1,uColor2;varying float vE;void main(){gl_FragColor=vec4(mix(uColor1,uColor2,(vE+0.5)*0.5),0.9);}',transparent:true,side:THREE.DoubleSide});
+    waterPlane=new THREE.Mesh(g,m);waterPlane.rotation.x=-Math.PI/2;waterPlane.position.y=-0.5;scene.add(waterPlane);
+}
+
+function createBoards(){
+    playerBoard=createBoard(-GRID_GAP/2-GRID_SIZE*CELL_SIZE/2,'player');
+    enemyBoard=createBoard(GRID_GAP/2+GRID_SIZE*CELL_SIZE/2,'enemy');
+    scene.add(playerBoard,enemyBoard);
+    createLabel('YOUR FLEET',playerBoard.position.x,-GRID_SIZE*CELL_SIZE/2-3);
+    createLabel('ENEMY WATERS',enemyBoard.position.x,-GRID_SIZE*CELL_SIZE/2-3);
+}
+
+function createBoard(xOff,type){
+    const b=new THREE.Group();b.userData.type=type;b.position.x=xOff;const sz=GRID_SIZE*CELL_SIZE;
+    const base=new THREE.Mesh(new THREE.BoxGeometry(sz+1,0.5,sz+1),new THREE.MeshStandardMaterial({color:0x0a1628,metalness:0.8,roughness:0.2}));
+    base.position.y=-0.25;base.receiveShadow=true;b.add(base);
+    for(let i=0;i<GRID_SIZE;i++)for(let j=0;j<GRID_SIZE;j++){
+        const c=new THREE.Mesh(new THREE.BoxGeometry(CELL_SIZE-0.1,0.1,CELL_SIZE-0.1),new THREE.MeshStandardMaterial({color:0x004466,metalness:0.5,roughness:0.5,transparent:true,opacity:0.7}));
+        c.position.set((i-GRID_SIZE/2+0.5)*CELL_SIZE,0.05,(j-GRID_SIZE/2+0.5)*CELL_SIZE);c.userData={row:i,col:j,type};c.receiveShadow=true;b.add(c);
+    }
+    const lm=new THREE.LineBasicMaterial({color:0x00d4ff,transparent:true,opacity:0.3});
+    for(let i=0;i<=GRID_SIZE;i++){const v=(i-GRID_SIZE/2)*CELL_SIZE;
+        b.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(v,0.1,-sz/2),new THREE.Vector3(v,0.1,sz/2)]),lm));
+        b.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-sz/2,0.1,v),new THREE.Vector3(sz/2,0.1,v)]),lm));
+    }
+    return b;
+}
+
+function createLabel(text,x,z){
+    const c=document.createElement('canvas');c.width=512;c.height=64;const ctx=c.getContext('2d');
+    ctx.fillStyle='#00d4ff';ctx.font='bold 32px Orbitron,sans-serif';ctx.textAlign='center';ctx.fillText(text,256,40);
+    const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,opacity:0.8}));
+    s.position.set(x,1,z);s.scale.set(10,1.25,1);scene.add(s);
+}
+
+function createMarkers(){
+    hoverMarker=new THREE.Mesh(new THREE.BoxGeometry(CELL_SIZE-0.2,0.3,CELL_SIZE-0.2),new THREE.MeshStandardMaterial({color:0x00ff88,transparent:true,opacity:0.5,emissive:0x00ff88,emissiveIntensity:0.3}));
+    hoverMarker.visible=false;scene.add(hoverMarker);
+    targetMarker=new THREE.Mesh(new THREE.RingGeometry(0.6,0.8,32),new THREE.MeshBasicMaterial({color:0xff4444,transparent:true,opacity:0.8,side:THREE.DoubleSide}));
+    targetMarker.rotation.x=-Math.PI/2;targetMarker.visible=false;scene.add(targetMarker);
+}
+
+function createShip(size,isPlayer=true){
+    const ship=new THREE.Group(),len=size*CELL_SIZE-0.4,wid=CELL_SIZE*0.6,hgt=0.8;
+    const shape=new THREE.Shape();shape.moveTo(-len/2,-wid/2);shape.lineTo(len/2-wid/2,-wid/2);shape.quadraticCurveTo(len/2,0,len/2-wid/2,wid/2);shape.lineTo(-len/2,wid/2);shape.closePath();
+    const hull=new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:hgt,bevelEnabled:true,bevelThickness:0.1,bevelSize:0.1,bevelSegments:3}),new THREE.MeshStandardMaterial({color:isPlayer?0x2a4858:0x4a2828,metalness:0.6,roughness:0.4}));
+    hull.rotation.x=-Math.PI/2;hull.position.y=0.2;hull.castShadow=true;ship.add(hull);
+    const deck=new THREE.Mesh(new THREE.BoxGeometry(len*0.8,0.1,wid*0.7),new THREE.MeshStandardMaterial({color:0x3a3a3a,metalness:0.3,roughness:0.7}));
+    deck.position.y=hgt+0.25;ship.add(deck);
+    if(size>=3){const br=new THREE.Mesh(new THREE.BoxGeometry(CELL_SIZE*0.4,0.6,wid*0.5),new THREE.MeshStandardMaterial({color:0x445566,metalness:0.5}));br.position.set(-len/4,hgt+0.6,0);ship.add(br)}
+    const mast=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,1,8),new THREE.MeshStandardMaterial({color:0x666666}));mast.position.set(-len/4,hgt+1,0);ship.add(mast);
+    return ship;
+}
+
+function createParticles(pos,isHit){
+    const cnt=isHit?30:20,parts=new THREE.Group();
+    for(let i=0;i<cnt;i++){
+        const g=new THREE.SphereGeometry(isHit?0.1+Math.random()*0.2:0.05+Math.random()*0.1,6,6);
+        const m=new THREE.MeshBasicMaterial({color:isHit?(Math.random()>0.5?0xff6600:0xffaa00):0x66ccff,transparent:true,opacity:1});
+        const p=new THREE.Mesh(g,m);p.position.copy(pos);
+        const a=Math.random()*Math.PI*2,sp=Math.random()*(isHit?0.3:0.2)+0.1;
+        p.userData.velocity=new THREE.Vector3(isHit?(Math.random()-0.5)*0.3:Math.cos(a)*sp,Math.random()*(isHit?0.4:0.3)+0.2,isHit?(Math.random()-0.5)*0.3:Math.sin(a)*sp);
+        p.userData.life=1;parts.add(p);
+    }
+    scene.add(parts);
+    const anim=()=>{let alive=false;parts.children.forEach(p=>{p.userData.life-=isHit?0.02:0.03;if(p.userData.life>0){alive=true;p.position.add(p.userData.velocity);p.userData.velocity.y-=isHit?0.01:0.015;p.material.opacity=p.userData.life;if(isHit)p.scale.multiplyScalar(0.98)}});alive?requestAnimationFrame(anim):scene.remove(parts)};
+    anim();
+}
+
+function placeShipOnBoard(data,board,isPlayer){
+    const{row,col,size,isHorizontal,name}=data;const ship=createShip(size,isPlayer);
+    const x=(row-GRID_SIZE/2+(isHorizontal?size/2:0.5))*CELL_SIZE,z=(col-GRID_SIZE/2+(isHorizontal?0.5:size/2))*CELL_SIZE;
+    ship.position.set(board.position.x+x,0.3,z);if(!isHorizontal)ship.rotation.y=Math.PI/2;
+    ship.userData={name,row,col,size,isHorizontal};(isPlayer?shipMeshes.player:shipMeshes.enemy).push(ship);if(!isPlayer)ship.visible=false;scene.add(ship);return ship;
+}
+
+function createMarker(pos,isHit){
+    const g=isHit?new THREE.CylinderGeometry(0.3,0.3,1,8):new THREE.CylinderGeometry(0.2,0.3,0.3,8);
+    const m=new THREE.MeshStandardMaterial(isHit?{color:0xff4444,emissive:0xff0000,emissiveIntensity:0.5}:{color:0x4488ff,transparent:true,opacity:0.7});
+    const mk=new THREE.Mesh(g,m);mk.position.copy(pos);mk.position.y=isHit?0.5:0.2;scene.add(mk);(isHit?markerMeshes.hits:markerMeshes.misses).push(mk);return mk;
+}
+
+function clearScene(){[...markerMeshes.hits,...markerMeshes.misses,...shipMeshes.player,...shipMeshes.enemy].forEach(m=>scene.remove(m));markerMeshes={hits:[],misses:[]};shipMeshes={player:[],enemy:[]}}
+
+function animate(){requestAnimationFrame(animate);if(waterPlane?.material?.uniforms)waterPlane.material.uniforms.uTime.value+=0.016;if(targetMarker.visible)targetMarker.rotation.z+=0.02;
+    const t=Date.now()*0.001;[...shipMeshes.player,...shipMeshes.enemy].forEach((s,i)=>{if(s.position.y>-1){s.position.y=0.3+Math.sin(t+i)*0.05;s.rotation.z=Math.sin(t*0.5+i)*0.02}});renderer.render(scene,camera)}
+
+function onMouseMove(e){if(gameState.isReplay)return;mouse.x=(e.clientX/innerWidth)*2-1;mouse.y=-(e.clientY/innerHeight)*2+1;updateHover();
+    const ch=document.getElementById('crosshair');if(gameState.phase==='battle'&&gameState.turn==='player'){ch.style.left=e.clientX+'px';ch.style.top=e.clientY+'px';ch.classList.remove('hidden')}else ch.classList.add('hidden')}
+
+function updateHover(){raycaster.setFromCamera(mouse,camera);const board=gameState.phase==='placement'?playerBoard:enemyBoard;const hits=raycaster.intersectObjects(board.children,true);
+    hoverMarker.visible=targetMarker.visible=false;
+    for(const hit of hits){const{row,col,type}=hit.object.userData;if(row===undefined)continue;
+        if(gameState.phase==='placement'&&type==='player'&&gameState.selectedShip){const{size}=gameState.selectedShip;const canPlace=canPlaceShip(row,col,size,gameState.isHorizontal);
+            hoverMarker.material.color.setHex(canPlace?0x00ff88:0xff4444);hoverMarker.material.emissive.setHex(canPlace?0x00ff88:0xff4444);
+            hoverMarker.scale.set(gameState.isHorizontal?size:1,1,gameState.isHorizontal?1:size);
+            hoverMarker.position.set(playerBoard.position.x+(row-GRID_SIZE/2+(gameState.isHorizontal?size/2:0.5))*CELL_SIZE,0.2,(col-GRID_SIZE/2+(gameState.isHorizontal?0.5:size/2))*CELL_SIZE);hoverMarker.visible=true}
+        else if(gameState.phase==='battle'&&type==='enemy'&&gameState.turn==='player'&&!gameState.playerShots[row][col]){targetMarker.position.set(enemyBoard.position.x+(row-GRID_SIZE/2+0.5)*CELL_SIZE,0.5,(col-GRID_SIZE/2+0.5)*CELL_SIZE);targetMarker.visible=true}
+        break}}
+
+function onClick(){if(gameState.isReplay)return;raycaster.setFromCamera(mouse,camera);const board=gameState.phase==='placement'?playerBoard:enemyBoard;const hits=raycaster.intersectObjects(board.children,true);
+    for(const hit of hits){const{row,col,type}=hit.object.userData;if(row===undefined)continue;
+        if(gameState.phase==='placement'&&type==='player')handlePlacement(row,col);else if(gameState.phase==='battle'&&type==='enemy'&&gameState.turn==='player')handlePlayerShot(row,col);break}}
+
+function canPlaceShip(row,col,size,horiz){if(horiz?row+size>GRID_SIZE:col+size>GRID_SIZE)return false;for(let i=0;i<size;i++){const r=horiz?row+i:row,c=horiz?col:col+i;if(gameState.playerGrid[r][c]!==null)return false}return true}
+
+function handlePlacement(row,col){if(!gameState.selectedShip)return;const{size,name}=gameState.selectedShip;if(!canPlaceShip(row,col,size,gameState.isHorizontal))return;
+    for(let i=0;i<size;i++){const r=gameState.isHorizontal?row+i:row,c=gameState.isHorizontal?col:col+i;gameState.playerGrid[r][c]=name}
+    const data={name,row,col,size,isHorizontal:gameState.isHorizontal,hits:0};gameState.playerShips.push(data);gameState.placedShips.push(name);placeShipOnBoard(data,playerBoard,true);
+    document.querySelector(`[data-ship="${name}"]`).classList.add('opacity-40','cursor-not-allowed');gameState.selectedShip=null;hoverMarker.visible=false;addMessage(`${name.toUpperCase()} deployed`);
+    if(gameState.placedShips.length===SHIPS.length)document.getElementById('start-btn').disabled=false;saveCurrentGame()}
+
+function placeEnemyShips(){SHIPS.forEach(ship=>{let placed=false;while(!placed){const row=Math.floor(Math.random()*GRID_SIZE),col=Math.floor(Math.random()*GRID_SIZE),horiz=Math.random()>0.5;
+    if((horiz?row+ship.size<=GRID_SIZE:col+ship.size<=GRID_SIZE)){let valid=true;for(let i=0;i<ship.size&&valid;i++){const r=horiz?row+i:row,c=horiz?col:col+i;if(gameState.enemyGrid[r][c]!==null)valid=false}
+    if(valid){for(let i=0;i<ship.size;i++){const r=horiz?row+i:row,c=horiz?col:col+i;gameState.enemyGrid[r][c]=ship.name}
+    const data={name:ship.name,row,col,size:ship.size,isHorizontal:horiz,hits:0};gameState.enemyShips.push(data);placeShipOnBoard(data,enemyBoard,false);placed=true}}}})}
+
+function handlePlayerShot(row,col){if(gameState.playerShots[row][col])return;gameState.playerShots[row][col]=true;gameState.shotsFired++;document.getElementById('shots-fired').textContent=gameState.shotsFired;
+    const pos=new THREE.Vector3(enemyBoard.position.x+(row-GRID_SIZE/2+0.5)*CELL_SIZE,0,(col-GRID_SIZE/2+0.5)*CELL_SIZE);const isHit=gameState.enemyGrid[row][col]!==null;const shipName=gameState.enemyGrid[row][col];
+    const move={type:'player',row,col,isHit,shipName,timestamp:Date.now()};createParticles(pos,isHit);createMarker(pos,isHit);
+    if(isHit){const ship=gameState.enemyShips.find(s=>s.name===shipName);ship.hits++;move.shipHits=ship.hits;move.shipSunk=ship.hits===ship.size;
+        if(ship.hits===ship.size){addMessage(`Enemy ${shipName.toUpperCase()} destroyed!`,'sunk');const mesh=shipMeshes.enemy.find(s=>s.userData.name===shipName);if(mesh){mesh.visible=true;sinkShip(mesh)}
+            const remaining=gameState.enemyShips.filter(s=>s.hits<s.size).length;document.getElementById('enemy-ships').textContent=remaining;
+            if(remaining===0){gameState.moveHistory.push(move);endGame(true);return}}else addMessage(`HIT! Enemy ${shipName}`,'hit')}else addMessage('Miss','miss');
+    gameState.moveHistory.push(move);saveCurrentGame();gameState.turn='enemy';updateTurnIndicator();setTimeout(enemyTurn,1500)}
+
+function sinkShip(mesh){const sink=()=>{mesh.position.y-=0.02;mesh.rotation.x+=0.01;if(mesh.position.y>-2)requestAnimationFrame(sink)};sink()}
+
+function enemyTurn(){let row,col,attempts=0;do{row=Math.floor(Math.random()*GRID_SIZE);col=Math.floor(Math.random()*GRID_SIZE);attempts++}while(gameState.enemyShots[row][col]&&attempts<100);
+    if(attempts>=100){gameState.turn='player';updateTurnIndicator();return}gameState.enemyShots[row][col]=true;
+    const pos=new THREE.Vector3(playerBoard.position.x+(row-GRID_SIZE/2+0.5)*CELL_SIZE,0,(col-GRID_SIZE/2+0.5)*CELL_SIZE);const isHit=gameState.playerGrid[row][col]!==null;const shipName=gameState.playerGrid[row][col];
+    const move={type:'enemy',row,col,isHit,shipName,timestamp:Date.now()};createParticles(pos,isHit);createMarker(pos,isHit);
+    if(isHit){const ship=gameState.playerShips.find(s=>s.name===shipName);ship.hits++;move.shipHits=ship.hits;move.shipSunk=ship.hits===ship.size;
+        if(ship.hits===ship.size){addMessage(`Your ${shipName.toUpperCase()} destroyed!`,'sunk');const mesh=shipMeshes.player.find(s=>s.userData.name===shipName);if(mesh)sinkShip(mesh);
+            const remaining=gameState.playerShips.filter(s=>s.hits<s.size).length;document.getElementById('player-ships').textContent=remaining;
+            if(remaining===0){gameState.moveHistory.push(move);endGame(false);return}}else addMessage(`Enemy hit ${shipName}!`,'hit')}else addMessage('Enemy missed','miss');
+    gameState.moveHistory.push(move);saveCurrentGame();gameState.turn='player';updateTurnIndicator()}
+
+function updateTurnIndicator(){const el=document.getElementById('turn-indicator');
+    if(gameState.isReplay){el.textContent='REPLAY MODE';el.className='font-orbitron text-sm tracking-widest px-6 py-4 bg-navy-600/80 border-2 border-replay text-replay rounded'}
+    else if(gameState.turn==='player'){el.textContent='YOUR TURN';el.className='font-orbitron text-sm tracking-widest px-6 py-4 bg-navy-600/80 border-2 border-cyber-400 text-cyber-400 rounded'}
+    else{el.textContent='ENEMY TURN';el.className='font-orbitron text-sm tracking-widest px-6 py-4 bg-navy-600/80 border-2 border-danger text-danger rounded'}}
+
+function addMessage(text,type=''){const log=document.getElementById('message-log');const colors={hit:'border-l-warning text-warning',miss:'border-l-blue-400 text-blue-400',sunk:'border-l-danger text-danger font-semibold'};
+    const msg=document.createElement('div');msg.className=`text-sm px-4 py-2 mb-1 bg-navy-600/60 rounded border-l-2 ${colors[type]||'border-l-gray-500 text-gray-300'} opacity-0 translate-x-5 animate-slide-in`;msg.textContent=text;log.appendChild(msg);while(log.children.length>5)log.removeChild(log.firstChild)}
+
+function endGame(playerWon){gameState.phase='gameover';saveGameToHistory(playerWon);localStorage.removeItem(STORAGE.CURRENT);
+    const modal=document.getElementById('game-over-modal');document.getElementById('modal-title').textContent=playerWon?'VICTORY':'DEFEAT';
+    document.getElementById('modal-title').className=`font-orbitron text-5xl font-black tracking-widest mb-5 ${playerWon?'gradient-text-victory':'gradient-text-defeat'}`;
+    document.getElementById('modal-subtitle').textContent=playerWon?`Destroyed in ${gameState.shotsFired} shots`:'Your fleet destroyed';modal.classList.remove('opacity-0','invisible');modal.querySelector('.text-center').classList.remove('scale-90')}
+
+function randomPlacement(){gameState.playerGrid=Array(10).fill(null).map(()=>Array(10).fill(null));gameState.playerShips=[];gameState.placedShips=[];shipMeshes.player.forEach(s=>scene.remove(s));shipMeshes.player=[];
+    document.querySelectorAll('[data-ship]').forEach(el=>el.classList.remove('opacity-40','cursor-not-allowed','border-cyber-400','bg-cyber-400/20'));
+    SHIPS.forEach(ship=>{let placed=false;while(!placed){const row=Math.floor(Math.random()*GRID_SIZE),col=Math.floor(Math.random()*GRID_SIZE),horiz=Math.random()>0.5;
+    if(canPlaceShip(row,col,ship.size,horiz)){for(let i=0;i<ship.size;i++){const r=horiz?row+i:row,c=horiz?col:col+i;gameState.playerGrid[r][c]=ship.name}
+    const data={name:ship.name,row,col,size:ship.size,isHorizontal:horiz,hits:0};gameState.playerShips.push(data);gameState.placedShips.push(ship.name);placeShipOnBoard(data,playerBoard,true);
+    document.querySelector(`[data-ship="${ship.name}"]`).classList.add('opacity-40','cursor-not-allowed');placed=true}}});
+    gameState.selectedShip=null;document.getElementById('start-btn').disabled=false;addMessage('Fleet deployed');saveCurrentGame()}
+
+function startBattle(){gameState.phase='battle';gameState.gameStartTime=Date.now();placeEnemyShips();
+    document.getElementById('ship-panel').classList.add('hidden');document.getElementById('controls-panel').classList.add('hidden');document.getElementById('continue-banner').classList.add('hidden');
+    updateTurnIndicator();addMessage('Battle commenced!');saveCurrentGame();
+    const target={x:5,y:30,z:35};const anim=()=>{camera.position.x+=(target.x-camera.position.x)*0.05;camera.position.y+=(target.y-camera.position.y)*0.05;camera.position.z+=(target.z-camera.position.z)*0.05;camera.lookAt(5,0,0);if(Math.abs(camera.position.x-target.x)>0.1)requestAnimationFrame(anim)};anim()}
+
+function saveCurrentGame(){const data={phase:gameState.phase,turn:gameState.turn,playerGrid:gameState.playerGrid,enemyGrid:gameState.enemyGrid,playerShots:gameState.playerShots,enemyShots:gameState.enemyShots,playerShips:gameState.playerShips,enemyShips:gameState.enemyShips,placedShips:gameState.placedShips,shotsFired:gameState.shotsFired,moveHistory:gameState.moveHistory,gameStartTime:gameState.gameStartTime,savedAt:Date.now()};localStorage.setItem(STORAGE.CURRENT,JSON.stringify(data))}
+function loadCurrentGame(){try{return JSON.parse(localStorage.getItem(STORAGE.CURRENT))}catch{return null}}
+
+function restoreGame(data){Object.assign(gameState,{phase:data.phase,turn:data.turn,playerGrid:data.playerGrid,enemyGrid:data.enemyGrid,playerShots:data.playerShots,enemyShots:data.enemyShots,playerShips:data.playerShips,enemyShips:data.enemyShips,placedShips:data.placedShips,shotsFired:data.shotsFired,moveHistory:data.moveHistory||[],gameStartTime:data.gameStartTime});
+    gameState.playerShips.forEach(s=>placeShipOnBoard(s,playerBoard,true));if(gameState.phase!=='placement')gameState.enemyShips.forEach(s=>placeShipOnBoard(s,enemyBoard,false));
+    for(let r=0;r<GRID_SIZE;r++)for(let c=0;c<GRID_SIZE;c++){if(gameState.playerShots[r][c])createMarker(new THREE.Vector3(enemyBoard.position.x+(r-GRID_SIZE/2+0.5)*CELL_SIZE,0,(c-GRID_SIZE/2+0.5)*CELL_SIZE),gameState.enemyGrid[r][c]!==null);
+    if(gameState.enemyShots[r][c])createMarker(new THREE.Vector3(playerBoard.position.x+(r-GRID_SIZE/2+0.5)*CELL_SIZE,0,(c-GRID_SIZE/2+0.5)*CELL_SIZE),gameState.playerGrid[r][c]!==null)}
+    gameState.enemyShips.filter(s=>s.hits>=s.size).forEach(s=>{const m=shipMeshes.enemy.find(x=>x.userData.name===s.name);if(m){m.visible=true;m.position.y=-2;m.rotation.x=0.3}});
+    gameState.playerShips.filter(s=>s.hits>=s.size).forEach(s=>{const m=shipMeshes.player.find(x=>x.userData.name===s.name);if(m){m.position.y=-2;m.rotation.x=0.3}});
+    updateUI();if(gameState.phase==='battle'){document.getElementById('ship-panel').classList.add('hidden');document.getElementById('controls-panel').classList.add('hidden');camera.position.set(5,30,35);camera.lookAt(5,0,0)}
+    else if(gameState.phase==='placement'){gameState.placedShips.forEach(n=>document.querySelector(`[data-ship="${n}"]`)?.classList.add('opacity-40','cursor-not-allowed'));if(gameState.placedShips.length===SHIPS.length)document.getElementById('start-btn').disabled=false}
+    updateTurnIndicator()}
+
+function updateUI(){document.getElementById('player-ships').textContent=gameState.playerShips.filter(s=>s.hits<s.size).length;document.getElementById('enemy-ships').textContent=gameState.enemyShips.filter(s=>s.hits<s.size).length;document.getElementById('shots-fired').textContent=gameState.shotsFired}
+
+function saveGameToHistory(playerWon){const history=getGameHistory();history.unshift({id:Date.now(),date:new Date().toISOString(),playerWon,shotsFired:gameState.shotsFired,moveHistory:gameState.moveHistory,playerShips:gameState.playerShips,enemyShips:gameState.enemyShips,playerGrid:gameState.playerGrid,enemyGrid:gameState.enemyGrid});if(history.length>20)history.pop();localStorage.setItem(STORAGE.HISTORY,JSON.stringify(history))}
+function getGameHistory(){try{return JSON.parse(localStorage.getItem(STORAGE.HISTORY))||[]}catch{return[]}}
+
+function renderHistoryList(){const history=getGameHistory();const container=document.getElementById('history-list');
+    if(!history.length){container.innerHTML='<div class="text-center text-gray-600 py-8 italic">No battles recorded</div>';return}
+    container.innerHTML=history.map(g=>{const d=new Date(g.date);return`<div class="history-item p-4 bg-navy-600/60 border rounded-lg cursor-pointer hover:border-cyber-400 transition-all ${g.playerWon?'border-l-4 border-l-green-400 border-cyber-400/20':'border-l-4 border-l-danger border-cyber-400/20'}" data-game-id="${g.id}">
+    <div class="text-xs text-gray-500 mb-1">${d.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+    <div class="font-orbitron text-sm font-bold mb-1 ${g.playerWon?'text-green-400':'text-danger'}">${g.playerWon?'⚓ VICTORY':'💀 DEFEAT'}</div>
+    <div class="text-xs text-gray-500">${g.shotsFired} shots • ${g.moveHistory.length} moves</div></div>`}).join('');
+    container.querySelectorAll('.history-item').forEach(el=>el.addEventListener('click',()=>startReplay(history.find(g=>g.id===parseInt(el.dataset.gameId)))))}
+
+function startReplay(gameData){if(!gameData?.moveHistory?.length)return;replayState={isPlaying:false,currentIndex:-1,speed:1,intervalId:null,gameData};gameState.isReplay=true;
+    clearScene();gameState.playerShots=Array(10).fill(null).map(()=>Array(10).fill(false));gameState.enemyShots=Array(10).fill(null).map(()=>Array(10).fill(false));
+    gameState.playerShips=JSON.parse(JSON.stringify(gameData.playerShips)).map(s=>({...s,hits:0}));gameState.enemyShips=JSON.parse(JSON.stringify(gameData.enemyShips)).map(s=>({...s,hits:0}));
+    gameState.playerGrid=gameData.playerGrid;gameState.enemyGrid=gameData.enemyGrid;
+    gameState.playerShips.forEach(s=>placeShipOnBoard(s,playerBoard,true));gameState.enemyShips.forEach(s=>placeShipOnBoard(s,enemyBoard,false));
+    document.getElementById('game-over-modal').classList.add('opacity-0','invisible');document.getElementById('history-panel').classList.add('hidden');document.getElementById('ship-panel').classList.add('hidden');document.getElementById('controls-panel').classList.add('hidden');
+    document.getElementById('replay-controls').classList.remove('hidden');document.getElementById('replay-controls').classList.add('flex');
+    document.getElementById('game-title').textContent='Replay Mode';document.getElementById('game-title').classList.remove('gradient-text');document.getElementById('game-title').classList.add('gradient-text-replay');
+    document.getElementById('replay-scrubber').max=gameData.moveHistory.length;document.getElementById('replay-scrubber').value=0;document.getElementById('total-moves').textContent=`of ${gameData.moveHistory.length}`;document.getElementById('current-move').textContent='Move 0';
+    updateUI();updateTurnIndicator();camera.position.set(5,30,35);camera.lookAt(5,0,0)}
+
+function replayMove(index){if(!replayState.gameData||index<0||index>=replayState.gameData.moveHistory.length)return;
+    const move=replayState.gameData.moveHistory[index];const board=move.type==='player'?enemyBoard:playerBoard;const shots=move.type==='player'?gameState.playerShots:gameState.enemyShots;
+    const ships=move.type==='player'?gameState.enemyShips:gameState.playerShips;const meshes=move.type==='player'?shipMeshes.enemy:shipMeshes.player;
+    shots[move.row][move.col]=true;const pos=new THREE.Vector3(board.position.x+(move.row-GRID_SIZE/2+0.5)*CELL_SIZE,0,(move.col-GRID_SIZE/2+0.5)*CELL_SIZE);
+    createParticles(pos,move.isHit);createMarker(pos,move.isHit);
+    if(move.isHit){const ship=ships.find(s=>s.name===move.shipName);if(ship)ship.hits++;if(move.shipSunk){const mesh=meshes.find(m=>m.userData.name===move.shipName);if(mesh){mesh.visible=true;sinkShip(mesh)}}}
+    replayState.currentIndex=index;document.getElementById('replay-scrubber').value=index+1;document.getElementById('current-move').textContent=`Move ${index+1}`;updateUI()}
+
+function replayToPosition(targetIndex){clearScene();gameState.playerShots=Array(10).fill(null).map(()=>Array(10).fill(false));gameState.enemyShots=Array(10).fill(null).map(()=>Array(10).fill(false));
+    gameState.playerShips=JSON.parse(JSON.stringify(replayState.gameData.playerShips)).map(s=>({...s,hits:0}));gameState.enemyShips=JSON.parse(JSON.stringify(replayState.gameData.enemyShips)).map(s=>({...s,hits:0}));
+    gameState.playerShips.forEach(s=>placeShipOnBoard(s,playerBoard,true));gameState.enemyShips.forEach(s=>placeShipOnBoard(s,enemyBoard,false));
+    for(let i=0;i<=targetIndex&&i<replayState.gameData.moveHistory.length;i++){const move=replayState.gameData.moveHistory[i];const board=move.type==='player'?enemyBoard:playerBoard;
+    const shots=move.type==='player'?gameState.playerShots:gameState.enemyShots;const ships=move.type==='player'?gameState.enemyShips:gameState.playerShips;const meshes=move.type==='player'?shipMeshes.enemy:shipMeshes.player;
+    shots[move.row][move.col]=true;const pos=new THREE.Vector3(board.position.x+(move.row-GRID_SIZE/2+0.5)*CELL_SIZE,0,(move.col-GRID_SIZE/2+0.5)*CELL_SIZE);createMarker(pos,move.isHit);
+    if(move.isHit){const ship=ships.find(s=>s.name===move.shipName);if(ship)ship.hits++;if(move.shipSunk){const mesh=meshes.find(m=>m.userData.name===move.shipName);if(mesh){mesh.visible=true;mesh.position.y=-2;mesh.rotation.x=0.3}}}}
+    replayState.currentIndex=targetIndex;document.getElementById('replay-scrubber').value=targetIndex+1;document.getElementById('current-move').textContent=`Move ${targetIndex+1}`;updateUI()}
+
+function exitReplay(){if(replayState.intervalId)clearInterval(replayState.intervalId);replayState={isPlaying:false,currentIndex:-1,speed:1,intervalId:null,gameData:null};gameState.isReplay=false;
+    document.getElementById('replay-controls').classList.add('hidden');document.getElementById('replay-controls').classList.remove('flex');document.getElementById('game-title').textContent='Naval Command';document.getElementById('game-title').classList.add('gradient-text');document.getElementById('game-title').classList.remove('gradient-text-replay');resetGame()}
+
+function resetGame(){clearScene();gameState={phase:'placement',turn:'player',selectedShip:null,isHorizontal:true,playerGrid:Array(10).fill(null).map(()=>Array(10).fill(null)),enemyGrid:Array(10).fill(null).map(()=>Array(10).fill(null)),playerShots:Array(10).fill(null).map(()=>Array(10).fill(false)),enemyShots:Array(10).fill(null).map(()=>Array(10).fill(false)),playerShips:[],enemyShips:[],placedShips:[],shotsFired:0,moveHistory:[],gameStartTime:null,isReplay:false};
+    document.getElementById('ship-panel').classList.remove('hidden');document.getElementById('controls-panel').classList.remove('hidden');document.getElementById('start-btn').disabled=true;
+    document.querySelectorAll('[data-ship]').forEach(el=>el.classList.remove('opacity-40','cursor-not-allowed','border-cyber-400','bg-cyber-400/20'));document.getElementById('turn-indicator').textContent='DEPLOYMENT PHASE';document.getElementById('message-log').innerHTML='';
+    updateUI();updateTurnIndicator();camera.position.set(0,35,40);camera.lookAt(0,0,0)}
+
+function initUI(){const shipList=document.getElementById('ship-list');
+    SHIPS.forEach(ship=>{const el=document.createElement('div');el.className='flex items-center gap-4 px-4 py-3 bg-navy-600/80 border border-cyber-400/30 rounded cursor-pointer hover:border-cyber-400 hover:bg-navy-500/90 transition-all';el.dataset.ship=ship.name;el.dataset.size=ship.size;
+    el.innerHTML=`<div class="flex gap-0.5">${Array(ship.size).fill('<div class="w-3 h-3 bg-gradient-to-br from-cyber-400 to-cyber-600 rounded-sm"></div>').join('')}</div><span class="text-sm tracking-wide uppercase">${ship.name}</span>`;
+    el.addEventListener('click',()=>{if(el.classList.contains('opacity-40'))return;document.querySelectorAll('[data-ship]').forEach(x=>x.classList.remove('border-cyber-400','bg-cyber-400/20'));el.classList.add('border-cyber-400','bg-cyber-400/20');gameState.selectedShip={name:ship.name,size:ship.size}});shipList.appendChild(el)});
+    document.getElementById('rotate-btn').addEventListener('click',()=>{gameState.isHorizontal=!gameState.isHorizontal;updateHover()});
+    document.getElementById('random-btn').addEventListener('click',randomPlacement);document.getElementById('start-btn').addEventListener('click',startBattle);
+    document.getElementById('menu-btn').addEventListener('click',()=>{renderHistoryList();document.getElementById('history-panel').classList.toggle('hidden')});
+    document.getElementById('close-history').addEventListener('click',()=>document.getElementById('history-panel').classList.add('hidden'));
+    document.getElementById('continue-game-btn').addEventListener('click',()=>{const saved=loadCurrentGame();if(saved)restoreGame(saved);document.getElementById('continue-banner').classList.add('hidden')});
+    document.getElementById('new-game-btn').addEventListener('click',()=>{localStorage.removeItem(STORAGE.CURRENT);document.getElementById('continue-banner').classList.add('hidden')});
+    document.getElementById('modal-new-game').addEventListener('click',()=>{document.getElementById('game-over-modal').classList.add('opacity-0','invisible');resetGame()});
+    document.getElementById('modal-replay').addEventListener('click',()=>{const history=getGameHistory();if(history.length)startReplay(history[0])});
+    document.getElementById('replay-play').addEventListener('click',()=>{if(replayState.isPlaying){clearInterval(replayState.intervalId);replayState.isPlaying=false;document.getElementById('replay-play').textContent='▶'}
+    else{replayState.isPlaying=true;document.getElementById('replay-play').textContent='⏸';replayState.intervalId=setInterval(()=>{if(replayState.currentIndex<replayState.gameData.moveHistory.length-1)replayMove(replayState.currentIndex+1);else{clearInterval(replayState.intervalId);replayState.isPlaying=false;document.getElementById('replay-play').textContent='▶'}},1500/replayState.speed)}});
+    document.getElementById('replay-start').addEventListener('click',()=>replayToPosition(-1));document.getElementById('replay-end').addEventListener('click',()=>replayToPosition(replayState.gameData.moveHistory.length-1));
+    document.getElementById('replay-prev').addEventListener('click',()=>{if(replayState.currentIndex>0)replayToPosition(replayState.currentIndex-1);else replayToPosition(-1)});
+    document.getElementById('replay-next').addEventListener('click',()=>{if(replayState.currentIndex<replayState.gameData.moveHistory.length-1)replayMove(replayState.currentIndex+1)});
+    document.getElementById('replay-scrubber').addEventListener('input',e=>replayToPosition(parseInt(e.target.value)-1));
+    document.getElementById('replay-slower').addEventListener('click',()=>{replayState.speed=Math.max(0.25,replayState.speed/2);document.getElementById('speed-indicator').textContent=replayState.speed+'x'});
+    document.getElementById('replay-faster').addEventListener('click',()=>{replayState.speed=Math.min(4,replayState.speed*2);document.getElementById('speed-indicator').textContent=replayState.speed+'x'});
+    document.getElementById('exit-replay').addEventListener('click',exitReplay);
+    const saved=loadCurrentGame();if(saved&&saved.phase!=='gameover'){document.getElementById('continue-banner').classList.remove('hidden');document.getElementById('continue-banner').classList.add('flex')}}
+
+addEventListener('load',()=>{initThree();initUI();setTimeout(()=>document.getElementById('loading-screen').classList.add('opacity-0','pointer-events-none'),2000)});
+    </script>
+</body>
+</html>
