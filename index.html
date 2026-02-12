@@ -370,7 +370,7 @@ function initUI(){const shipList=document.getElementById('ship-list');
     document.getElementById('replay-next').addEventListener('click',()=>{if(replayState.currentIndex<replayState.gameData.moveHistory.length-1)replayMove(replayState.currentIndex+1)});
     document.getElementById('replay-scrubber').addEventListener('input',e=>replayToPosition(parseInt(e.target.value)-1));
     document.getElementById('replay-slower').addEventListener('click',()=>{replayState.speed=Math.max(0.25,replayState.speed/2);document.getElementById('speed-indicator').textContent=replayState.speed+'x'});
-    document.getElementById('replay-faster').addEventListener('click',()=>{replayState.speed=Math.min(4,replayState.speed*2);document.getElementById('speed-indicator').textContent=replayState.speed+'x'});
+    document.getElementById('replay-faster').addEventListener('click',()=>{replayState.speed=Math.min(40,replayState.speed*2);document.getElementById('speed-indicator').textContent=replayState.speed+'x'});
     document.getElementById('exit-replay').addEventListener('click',exitReplay);
     const saved=loadCurrentGame();if(saved&&saved.phase!=='gameover'){document.getElementById('continue-banner').classList.remove('hidden');document.getElementById('continue-banner').classList.add('flex')}}
 
